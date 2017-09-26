@@ -73,7 +73,7 @@ contract StandardToken is BasicToken, ERC20 {
    * @dev Transfer tokens from one address to another
    * @param _from address The address which you want to send tokens from
    * @param _to address The address which you want to transfer to
-   * @param _value uint the amout of tokens to be transfered
+   * @param _value uint the amount of tokens to be transferred
    */
   function transferFrom(address _from, address _to, uint _value) onlyPayloadSize(3 * 32) {
     var _allowance = allowed[_from][msg.sender];
@@ -304,7 +304,7 @@ contract SmartBillions is StandardToken {
     /**
      * @dev Move funds to cold storage
      * @dev investBalance and walletBalance is protected from withdraw by owner
-     * @dev if funding is > 50% admin can withdraw only 0.25% of balance weakly
+     * @dev if funding is > 50% admin can withdraw only 0.25% of balance weekly
      * @param _amount The amount of wei to move to cold storage
      */
     function coldStore(uint _amount) external onlyOwner {
