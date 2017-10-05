@@ -1,11 +1,11 @@
-pragma solidity ^0.4.13;
+pragma solidity ^0.4.17;
 
 library SafeMath {
-  function sub(uint a, uint b) internal returns (uint) {
+  function sub(uint a, uint b) internal pure returns (uint) {
     assert(b <= a);
     return a - b;
   }
-  function add(uint a, uint b) internal returns (uint) {
+  function add(uint a, uint b) internal pure returns (uint) {
     uint c = a + b;
     assert(c >= a);
     return c;
@@ -16,16 +16,16 @@ contract ERC20Basic {
   uint public totalSupply;
   address public owner; //owner
   address public animator; //animator
-  function balanceOf(address who) constant returns (uint);
-  function transfer(address to, uint value);
+  function balanceOf(address who) constant public returns (uint);
+  function transfer(address to, uint value) public;
   event Transfer(address indexed from, address indexed to, uint value);
   function commitDividend(address who) internal; // pays remaining dividend
 }
 
 contract ERC20 is ERC20Basic {
-  function allowance(address owner, address spender) constant returns (uint);
-  function transferFrom(address from, address to, uint value);
-  function approve(address spender, uint value);
+  function allowance(address owner, address spender) constant public returns (uint);
+  function transferFrom(address from, address to, uint value) public;
+  function approve(address spender, uint value) public;
   event Approval(address indexed owner, address indexed spender, uint value);
 }
 
@@ -42,7 +42,7 @@ contract BasicToken is ERC20Basic {
   * @param _to The address to transfer to.
   * @param _value The amount to be transferred.
   */
-  function transfer(address _to, uint _value) onlyPayloadSize(2 * 32) {
+  function transfer(address _to, uint _value) public onlyPayloadSize(2 * 32) {
     commitDividend(msg.sender);
     balances[msg.sender] = balances[msg.sender].sub(_value);
     if(_to == address(this)) {
@@ -61,7 +61,7 @@ contract BasicToken is ERC20Basic {
   * @param _owner The address to query the the balance of. 
   * @return An uint representing the amount owned by the passed address.
   */
-  function balanceOf(address _owner) constant returns (uint balance) {
+  function balanceOf(address _owner) constant public returns (uint balance) {
     return balances[_owner];
   }
 }
@@ -75,13 +75,13 @@ contract StandardToken is BasicToken, ERC20 {
    * @param _to address The address which you want to transfer to
    * @param _value uint the amout of tokens to be transfered
    */
-  function transferFrom(address _from, address _to, uint _value) onlyPayloadSize(3 * 32) {
+  function transferFrom(address _from, address _to, uint _value) public onlyPayloadSize(3 * 32) {
     var _allowance = allowed[_from][msg.sender];
     commitDividend(_from);
     commitDividend(_to);
-    balances[_to] = balances[_to].add(_value);
-    balances[_from] = balances[_from].sub(_value);
     allowed[_from][msg.sender] = _allowance.sub(_value);
+    balances[_from] = balances[_from].sub(_value);
+    balances[_to] = balances[_to].add(_value);
     Transfer(_from, _to, _value);
   }
   /**
@@ -89,7 +89,7 @@ contract StandardToken is BasicToken, ERC20 {
    * @param _spender The address which will spend the funds.
    * @param _value The amount of tokens to be spent.
    */
-  function approve(address _spender, uint _value) {
+  function approve(address _spender, uint _value) public {
     //  https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
     assert(!((_value != 0) && (allowed[msg.sender][_spender] != 0)));
     allowed[msg.sender][_spender] = _value;
@@ -101,7 +101,7 @@ contract StandardToken is BasicToken, ERC20 {
    * @param _spender address The address which will spend the funds.
    * @return A uint specifing the amount of tokens still avaible for the spender.
    */
-  function allowance(address _owner, address _spender) constant returns (uint remaining) {
+  function allowance(address _owner, address _spender) constant public returns (uint remaining) {
     return allowed[_owner][_spender];
   }
 }
@@ -135,6 +135,7 @@ contract SmartBillions is StandardToken {
     // investment parameters
     uint public investStart = 1; // investment start block, 0: closed, 1: preparation
     uint public investBalance = 0; // funding from investors
+    uint public investBalanceGot = 0; // funding collected
     uint public investBalanceMax = 200000 ether; // maximum funding
     uint public dividendPeriod = 1;
     uint[] public dividends; // dividens collected per period, growing array
@@ -173,7 +174,7 @@ contract SmartBillions is StandardToken {
     }
 
     // constructor
-    function SmartBillions() {
+    function SmartBillions() public {
         owner = msg.sender;
         animator = msg.sender;
         wallets[owner].lastDividendPeriod = uint16(dividendPeriod);
@@ -310,7 +311,7 @@ contract SmartBillions is StandardToken {
     function coldStore(uint _amount) external onlyOwner {
         houseKeeping();
         require(_amount > 0 && this.balance >= (investBalance * 9 / 10) + walletBalance + _amount);
-        if(investBalance >= investBalanceMax / 2){ // additional jackpot protection
+        if(investBalance >= investBalanceGot / 2){ // additional jackpot protection
             require((_amount <= this.balance / 400) && coldStoreLast + 4 * 60 * 24 * 7 <= block.number);
         }
         msg.sender.transfer(_amount);
@@ -321,6 +322,8 @@ contract SmartBillions is StandardToken {
      * @dev Move funds to contract jackpot
      */
     function hotStore() payable external {
+        walletBalance += msg.value;
+        wallets[msg.sender].balance += uint208(msg.value);
         houseKeeping();
     }
 
@@ -397,11 +400,13 @@ contract SmartBillions is StandardToken {
         if(investing > investBalanceMax - investBalance) {
             investing = investBalanceMax - investBalance;
             investBalance = investBalanceMax;
+            investBalanceGot = investBalanceMax;
             investStart = 0; // close investment round
             msg.sender.transfer(msg.value.sub(investing)); // send back funds immediately
         }
         else{
             investBalance += investing;
+            investBalanceGot += investing;
         }
         if(_partner == address(0) || _partner == owner){
             walletBalance += investing / 10;
@@ -555,8 +560,11 @@ contract SmartBillions is StandardToken {
         else {
             if(hashFirst>0){ // lottery is open even before swap space (hashes) is ready, but player must collect results within 256 blocks after run
                 hash = getHash(player.blockNum);
-                if(hash == 0x1000000) { // load hash failed :-(, return funds
-                    prize = uint(player.value);
+                if(hash == 0x1000000) { // load hash failed :-(
+                    //prize = uint(player.value); no refunds anymore
+                    LogLate(msg.sender,player.blockNum,block.number);
+                    bets[msg.sender] = Bet({value: 0, betHash: 0, blockNum: 1});
+                    return();
                 }
                 else{
                     prize = betPrize(player,uint24(hash));
@@ -607,7 +615,7 @@ contract SmartBillions is StandardToken {
      * @dev Play in lottery
      */
     function play() payable public returns (uint) {
-        return playSystem(uint(sha3(msg.sender,block.number)), address(0));
+        return playSystem(uint(keccak256(msg.sender,block.number)), address(0));
     }
 
     /**
@@ -615,7 +623,7 @@ contract SmartBillions is StandardToken {
      * @param _partner Affiliate partner
      */
     function playRandom(address _partner) payable public returns (uint) {
-        return playSystem(uint(sha3(msg.sender,block.number)), _partner);
+        return playSystem(uint(keccak256(msg.sender,block.number)), _partner);
     }
 
     /**
@@ -651,7 +659,7 @@ contract SmartBillions is StandardToken {
             bets[msg.sender] = Bet({value: uint192(msg.value), betHash: uint32(bethash), blockNum: uint32(hashNext)});
             LogBet(msg.sender,uint(bethash),hashNext,msg.value);
         }
-        putHash(); // players help collecing data
+        putHashes(25); // players help collecing data, now much more than in last contract
         return(hashNext);
     }
 
@@ -671,7 +679,7 @@ contract SmartBillions is StandardToken {
             hashes.length += _sadd;
         }
         for(;n<hashes.length;n++){ // make sure to burn gas
-            hashes[n] = 1;
+            hashes[n] = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
         }
         if(hashes.length>=hashesSize) { // assume block.number > 10
             hashFirst = block.number - ( block.number % 10);
@@ -724,7 +732,7 @@ contract SmartBillions is StandardToken {
             blockn256 = 0;
         }
         else{
-            blockn256 = block.number - 256;
+            blockn256 = block.number - 255;
         }
         if(lastb < blockn256) {
             uint num = blockn256;
@@ -741,7 +749,7 @@ contract SmartBillions is StandardToken {
      * @dev Fill hash data many times
      * @param _num Number of iterations
      */
-    function putHashes(uint _num) external {
+    function putHashes(uint _num) public {
         uint n=0;
         for(;n<_num;n++){
             if(!putHash()){
