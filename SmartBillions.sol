@@ -73,7 +73,7 @@ contract StandardToken is BasicToken, ERC20 {
    * @dev Transfer tokens from one address to another
    * @param _from address The address which you want to send tokens from
    * @param _to address The address which you want to transfer to
-   * @param _value uint the amout of tokens to be transfered
+   * @param _value uint the amount of tokens to be transfered
    */
   function transferFrom(address _from, address _to, uint _value) public onlyPayloadSize(3 * 32) {
     var _allowance = allowed[_from][msg.sender];
@@ -113,14 +113,14 @@ contract SmartBillions is StandardToken {
 
     // metadata
     string public constant name = "SmartBillions Token";
-    string public constant symbol = "PLAY";
+    string public constant symbol = "Smart"; // changed due to conflicts
     uint public constant decimals = 0;
 
     // contract state
     struct Wallet {
         uint208 balance; // current balance of user
     	uint16 lastDividendPeriod; // last processed dividend period of user's tokens
-    	uint32 nextWithdrawBlock; // next withdrawal possible after this block number
+    	uint32 nextWithdrawTime; // next withdrawal possible after this timestamp
     }
     mapping (address => Wallet) wallets;
     struct Bet {
@@ -150,9 +150,8 @@ contract SmartBillions is StandardToken {
     uint[] public hashes; // space for storing lottery results
 
     // constants
-    //uint public constant hashesSize = 1024 ; // DEBUG ONLY !!!
     uint public constant hashesSize = 16384 ; // 30 days of blocks
-    uint public coldStoreLast = 0 ; // block of last cold store transfer
+    uint public coldStoreLast = 0 ; // timestamp of last cold store transfer
 
     // events
     event LogBet(address indexed player, uint bethash, uint blocknumber, uint betsize);
@@ -211,8 +210,8 @@ contract SmartBillions is StandardToken {
      * @dev Show block number when withdraw can continue
      * @param _owner The address of the account.
      */
-    function walletBlockOf(address _owner) constant external returns (uint) {
-        return uint(wallets[_owner].nextWithdrawBlock);
+    function walletTimeOf(address _owner) constant external returns (uint) {
+        return uint(wallets[_owner].nextWithdrawTime);
     }
     
     /**
@@ -305,17 +304,17 @@ contract SmartBillions is StandardToken {
     /**
      * @dev Move funds to cold storage
      * @dev investBalance and walletBalance is protected from withdraw by owner
-     * @dev if funding is > 50% admin can withdraw only 0.25% of balance weakly
+     * @dev if funding is > 50% admin can withdraw only 0.25% of balance weekly
      * @param _amount The amount of wei to move to cold storage
      */
     function coldStore(uint _amount) external onlyOwner {
         houseKeeping();
         require(_amount > 0 && this.balance >= (investBalance * 9 / 10) + walletBalance + _amount);
         if(investBalance >= investBalanceGot / 2){ // additional jackpot protection
-            require((_amount <= this.balance / 400) && coldStoreLast + 4 * 60 * 24 * 7 <= block.number);
+            require((_amount <= this.balance / 400) && coldStoreLast + 60 * 60 * 24 * 7 <= block.timestamp);
         }
         msg.sender.transfer(_amount);
-        coldStoreLast = block.number;
+        coldStoreLast = block.timestamp;
     }
 
     /**
@@ -355,7 +354,7 @@ contract SmartBillions is StandardToken {
      * @dev Pay balance from wallet
      */
     function payWallet() public {
-        if(wallets[msg.sender].balance > 0 && wallets[msg.sender].nextWithdrawBlock <= block.number){
+        if(wallets[msg.sender].balance > 0 && wallets[msg.sender].nextWithdrawTime <= block.timestamp){
             uint balance = wallets[msg.sender].balance;
             wallets[msg.sender].balance = 0;
             walletBalance -= balance;
@@ -375,7 +374,7 @@ contract SmartBillions is StandardToken {
             uint keepbalance = _amount - maxpay;
             walletBalance += keepbalance;
             wallets[msg.sender].balance += uint208(keepbalance);
-            wallets[msg.sender].nextWithdrawBlock = uint32(block.number + 4 * 60 * 24 * 30); // wait 1 month for more funds
+            wallets[msg.sender].nextWithdrawTime = uint32(block.timestamp + 60 * 60 * 24 * 30); // wait 1 month for more funds
             msg.sender.transfer(maxpay);
         }
     }
@@ -696,6 +695,7 @@ contract SmartBillions is StandardToken {
     }
 
     function calcHashes(uint32 _lastb, uint32 _delta) constant private returns (uint) {
+        // assert(!(_lastb % 10)); this is required
         return( ( uint(block.blockhash(_lastb  )) & 0xFFFFFF )
             | ( ( uint(block.blockhash(_lastb+1)) & 0xFFFFFF ) << 24 )
             | ( ( uint(block.blockhash(_lastb+2)) & 0xFFFFFF ) << 48 )
@@ -727,17 +727,9 @@ contract SmartBillions is StandardToken {
         if(lastb == 0 || block.number <= lastb + 10) {
             return(false);
         }
-        uint blockn256;
-        if(block.number<256) { // useless test for testnet :-(
-            blockn256 = 0;
-        }
-        else{
-            blockn256 = block.number - 255;
-        }
-        if(lastb < blockn256) {
-            uint num = blockn256;
-            num += num % 10;
-            lastb = num; 
+        if(lastb < block.number - 245) {
+            uint num = block.number - 245;
+            lastb = num - (num % 10);
         }
         uint delta = (lastb - hashFirst) / 10;
         hashes[delta % hashesSize] = calcHashes(uint32(lastb),uint32(delta));
