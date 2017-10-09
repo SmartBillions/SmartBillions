@@ -1,2 +1,2 @@
 # SmartBillions
-SmartBillions lottery contract on [ETH](https://etherscan.io/address/0x103c2c150a2dbcc277ee084c59881978060c8c22) and [ETC](http://gastracker.io/addr/0x103c2c150a2dbcc277ee084c59881978060c8c22)
+SmartBillions lottery contract on [ETH](https://etherscan.io/address/0x6f6deb5db0c4994a8283a01d6cfeeb27fc3bbe9c)
