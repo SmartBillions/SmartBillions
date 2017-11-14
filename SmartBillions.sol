@@ -73,7 +73,7 @@ contract StandardToken is BasicToken, ERC20 {
    * @dev Transfer tokens from one address to another
    * @param _from address The address which you want to send tokens from
    * @param _to address The address which you want to transfer to
-   * @param _value uint the amount of tokens to be transfered
+   * @param _value uint the amount of tokens to be transferred
    */
   function transferFrom(address _from, address _to, uint _value) public onlyPayloadSize(3 * 32) {
     var _allowance = allowed[_from][msg.sender];
@@ -96,7 +96,7 @@ contract StandardToken is BasicToken, ERC20 {
     Approval(msg.sender, _spender, _value);
   }
   /**
-   * @dev Function to check the amount of tokens than an owner allowed to a spender.
+   * @dev Function to check the amount of tokens that an owner allowed to a spender.
    * @param _owner address The address which owns the funds.
    * @param _spender address The address which will spend the funds.
    * @return A uint specifing the amount of tokens still avaible for the spender.
@@ -138,7 +138,7 @@ contract SmartBillions is StandardToken {
     uint public investBalanceGot = 0; // funding collected
     uint public investBalanceMax = 200000 ether; // maximum funding
     uint public dividendPeriod = 1;
-    uint[] public dividends; // dividens collected per period, growing array
+    uint[] public dividends; // dividends collected per period, growing array
 
     // betting parameters
     uint public maxWin = 0; // maximum prize won
